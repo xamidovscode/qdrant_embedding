@@ -1,5 +1,5 @@
 import requests
-
+from decouple import config
 
 class OpenRouterEmbedder:
     BASE_URL = "https://openrouter.ai/api/v1/embeddings"
@@ -31,7 +31,7 @@ class OpenRouterEmbedder:
 
 
 if __name__ == "__main__":
-    API_KEY = "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"
+    API_KEY = config("OPENROUTER_API_KEY")
 
     text = "Narxlar haqida ma'lumot bermoqchiman"
 
