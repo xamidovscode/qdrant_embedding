@@ -42,7 +42,7 @@ async def question_api(body: QuestionResponse):
     )
     res = searcher.ask(body.question, top_k=8, score_threshold=0.30)
 
-    if not res["found"]:
-        return {"answer": "Aniq topilmadi. Qaysi tarif yoki narx turini nazarda tutyapsiz?", "status": "ok"}
+    # if not res["found"]:
+    #     return {"answer": "Aniq topilmadi. Qaysi tarif yoki narx turini nazarda tutyapsiz?", "status": "ok"}
 
     return {"answer": res["text"], "status": "ok"}

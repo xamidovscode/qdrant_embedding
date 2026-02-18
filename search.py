@@ -106,16 +106,12 @@ class QdrantSemanticSearch:
         return ""
 
     def ask(
-        self,
-        question: str,
-        *,
-        top_k: int = 8,
-        score_threshold: Optional[float] = 0.30,
+            self,
+            question: str,
+            *,
+            top_k: int = 10,
+            score_threshold: Optional[float] = None,  # default: o‘chirilgan
     ) -> Dict[str, Any]:
-        """
-        top_k: birinchi 1 ta emas, bir nechta top natijani oladi (rerank)
-        score_threshold: juda past moslik bo‘lsa "topilmadi" qaytaradi
-        """
         vector = self.embedder.embed(question)
 
         res = self.q.query_points(
@@ -129,73 +125,33 @@ class QdrantSemanticSearch:
         if not res.points:
             return {"found": False, "text": None, "score": None, "payload": None}
 
-        # Eng yaxshi "foydali" natijani tanlash
-        chosen = None
+        best = None
+        best_score = -1e9
+
         for p in res.points:
-            score = float(p.score) if p.score is not None else None
-            if score_threshold is not None and score is not None and score < score_threshold:
+            score = float(p.score) if p.score is not None else 0.0
+            if score_threshold is not None and score < score_threshold:
                 continue
 
             payload = p.payload or {}
             text = self._extract_text(payload)
-
-            if self._is_boilerplate(text):
+            if not text:
                 continue
 
-            chosen = (text, score, payload)
-            break
+            # penalti: boilerplate bo‘lsa biroz kamaytiramiz, lekin tashlab yubormaymiz
+            penalized = score - (0.10 if self._is_boilerplate(text) else 0.0)
 
-        # Agar hammasi boilerplate bo‘lsa — baribir top1 qaytaramiz (lekin found=False qilish ham mumkin)
-        if chosen is None:
+            if penalized > best_score:
+                best_score = penalized
+                best = (text, score, payload)
+
+        # agar filtrlar sababli hech narsa tanlanmasa, baribir top1 qaytaramiz
+        if best is None:
             p0 = res.points[0]
             payload0 = p0.payload or {}
             text0 = self._extract_text(payload0)
             score0 = float(p0.score) if p0.score is not None else None
-            return {
-                "found": False,          # bu yerda "False" — sifatli natija topilmadi degani
-                "text": text0 or None,
-                "score": score0,
-                "payload": payload0,
-            }
+            return {"found": True, "text": text0, "score": score0, "payload": payload0}
 
-        text, score, payload = chosen
+        text, score, payload = best
         return {"found": True, "text": text, "score": score, "payload": payload}
-
-
-"""
-FASTAPI MISOL (global init, har requestda qayta yaratmaslik uchun)
-
-from fastapi import APIRouter
-from decouple import config
-from pydantic import BaseModel
-
-router = APIRouter()
-
-API_KEY = config("OPENROUTER_API_KEY")
-QDRANT_URL = config("QDRANT_URL", default="http://localhost:6333")
-
-embedder = OpenRouterEmbedder(api_key=API_KEY, model="text-embedding-3-small")
-searcher = QdrantSemanticSearch(
-    qdrant_url=QDRANT_URL,
-    collection="play_kb",
-    embedder=embedder,
-    text_key="text",   # agar payloadda clean_text bo‘lsa "clean_text" qil
-)
-
-class QuestionResponse(BaseModel):
-    question: str
-
-class AnswerResponse(BaseModel):
-    answer: str
-    status: str
-
-@router.post("/question/", response_model=AnswerResponse)
-async def question_api(body: QuestionResponse):
-    res = searcher.ask(body.question, top_k=8, score_threshold=0.30)
-
-    if not res["found"]:
-        # fallback: userdan aniqlashtirish so‘ra
-        return {"answer": "Aniq topilmadi. Qaysi tarif yoki narx turini nazarda tutyapsiz?", "status": "ok"}
-
-    return {"answer": res["text"], "status": "ok"}
-"""
