@@ -26,6 +26,6 @@ async def test(body: QuestionResponse):
     data = body.model_dump()
     res = searcher.ask(data['question'])
     return {
-        "answer": res,
+        "answer": res['text'],
         'status': "ok"
     }
